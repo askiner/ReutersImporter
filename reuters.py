@@ -3,6 +3,8 @@ Reuters processor.
 2016-07-07
 получает фото от Reuters ContentDownloader
 Важен каталог backup - с ним сравнивается пришедшие файлы. Если файлы лежат дольше 24 часов - их можно удалять.
+
+2017-12-19 comments and use temporary for copy
 """
 import os
 import re
@@ -32,6 +34,8 @@ class reu_xml_util:
 
     @staticmethod
     def get_def_tag(name):
+        """Get default tag
+        """
         if name is not None and isinstance(name, str):
             return '{' + reu_xml_util.ns['def'] + '}' + name
         else:
@@ -67,7 +71,6 @@ class reu_xml_util:
         for remote_content in elem.findall('def:contentSet/', reu_xml_util.ns):  # file names
             files.append(VideoFileInfo(remote_content))
         return files
-
 
 
 class VideoDescription:
@@ -187,6 +190,7 @@ class Publisher:
             print("Description is not ready!")
 
 
+# Object for storing data about video file
 class VideoFileInfo:
     name = None,
     content_type = None,
@@ -201,6 +205,9 @@ class VideoFileInfo:
 
 
 def is_xml(file_name):
+    """Check if file is XML
+    returns filename if is really XML
+    """
     pattern = re.compile(r".+.xml", re.IGNORECASE)
 
     match = pattern.match(file_name)
