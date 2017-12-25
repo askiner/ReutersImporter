@@ -9,20 +9,34 @@ Reuters processor.
 import os
 import re
 from xml.etree import cElementTree as et
-from shutil import copyfile
+from shutil import copyfile, move
 import datetime
 
-import_video = r'\\ftp.tass.ru\FTP\Photo\assets\Partners\Video\Reuters'
-import_xml = r'\\ftp.tass.ru\FTP\Photo\assets\Partners\Video\Reuters\xml_source'
-#import_backup = r'\\msk-oft-app01.corp.tass.ru\c$\backup\Reuters'
-import_backup = r'C:\backup\Reuters'
-temp_path = r'C:\temp'
+from tassphotoapi import get_item_by_original_unique_number as get_in_archive
+from direct_db import hide_db_fixedid_item
+
+DEBUG = True
+
+if not DEBUG:
+    import_video = r'\\ftp.tass.ru\FTP\Photo\assets\Partners\Video\Reuters'
+    import_xml = r'\\ftp.tass.ru\FTP\Photo\assets\Partners\Video\Reuters\xml_source'
+    #import_backup = r'\\msk-oft-app01.corp.tass.ru\c$\backup\Reuters'
+    import_backup = r'C:\backup\Reuters'
+    temp_path = r'C:\temp'
+    duplicates = r''
+else:
+    import_video = r'/Users/shkirya_a/Documents/test/Reuters_out'
+    import_xml = r'/Users/shkirya_a/Documents/test/Reuters_xml_out'
+    import_backup = r'/Users/shkirya_a/Documents/test/backup'
+    temp_path = r'/Users/shkirya_a/Documents/test'
+    duplicates = r'/Users/shkirya_a/Documents/test/duplicates'
 
 class reu_xml_util:
     ns = {'def': 'http://iptc.org/std/nar/2006-10-01/',
-              'xsi': 'http://www.w3.org/2001/XMLSchema-instance',
-              'rtr': 'http://www.reuters.com/ns/2003/08/content',
-              'x':   'http://www.w3.org/1999/xhtml'}
+          'xsi': 'http://www.w3.org/2001/XMLSchema-instance',
+          'rtr': 'http://www.reuters.com/ns/2003/08/content',
+          'x':   'http://www.w3.org/1999/xhtml',
+          'xml': 'http://www.w3.org/XML/1998/namespace'}
 
     qcode = {'text': 'icls:text', 'video': 'icls:video'}
 
@@ -49,6 +63,22 @@ class reu_xml_util:
     @staticmethod
     def is_item_class_type(elem, type_str):
         return elem.attrib['qcode'] == reu_xml_util.qcode[type_str]
+
+    @staticmethod
+    def get_package_unique_id(elem):
+
+        pattern = re.compile(r"newsml_(.+)", re.IGNORECASE)
+
+        uniqueId = pattern.search(elem.attrib['guid'])
+
+        if uniqueId.lastindex > 0:
+            return uniqueId.group(1)
+        else:
+            return None
+
+    @staticmethod
+    def get_package_version(elem):
+        return elem.attrib['version']
 
     @staticmethod
     def get_keywords(elem):
@@ -80,6 +110,9 @@ class VideoDescription:
     source = None
     keywords = []
     creationdate = None
+    copyright = None
+    copyrightNotice = None
+    uniqueId = None
     # country = None
     # country_code = None
     xml_file_name = None
@@ -129,6 +162,17 @@ class VideoDescription:
         et.SubElement(root, "modifieddate").text = datetime.datetime.now().strftime("%Y%m%d")
         et.SubElement(root, "modifiedtime").text = datetime.datetime.now().strftime("%H%M%S+3000")
 
+        if self.uniqueId:
+            et.SubElement(root, "fixident").text = self.uniqueId
+
+        if self.copyright:
+            et.SubElement(root, "copyright").text = self.copyright
+
+        if self.copyrightNotice:
+            et.SubElement(root, "observations").text = self.copyrightNotice
+
+
+
         if self.creationdate:
             et.SubElement(root, "creationdate").text = self.creationdate
 
@@ -144,7 +188,8 @@ class Publisher:
         'video': import_video,
         'xml': import_xml,
         'backup': import_backup,
-        'temp': temp_path
+        'temp': temp_path,
+        'duplicate': duplicates
     }
 
     description = None
@@ -154,7 +199,17 @@ class Publisher:
             self.description = descriptor
 
     def send(self):
+
         if self.description.ready():
+
+            # if file already exists ...
+            # TODO: remove old file and send this one to ingest
+            # get_in_archive
+            data = get_in_archive(self.description.uniqueId)
+
+            if data is not None:
+                for item in data:
+                    hide_db_fixedid_item(item['Id'])
 
             if os.path.exists(self.description.xml_file_name):
                 search_path = os.path.dirname(self.description.xml_file_name)
@@ -163,22 +218,32 @@ class Publisher:
                     if os.path.exists(os.path.join(search_path, file_info.name)):
                         # create XML
                         self.description.save_xml(os.path.join(self.path['temp'], os.path.splitext(file_info.name)[0] + '.xml'))
-                        copyfile(os.path.join(self.path['temp'], os.path.splitext(file_info.name)[0] + '.xml'),
-                                 os.path.join(self.path['xml'], os.path.splitext(file_info.name)[0] + '.xml'))
-                        # copy video
-                        copyfile(os.path.join(search_path, file_info.name),
-                                 os.path.join(self.path['video'], file_info.name))
+
                         # backup all
                         if self.path['backup'] is not None and \
-                                len(self.path['backup']) > 0 and \
+                                        len(self.path['backup']) > 0 and \
                                 os.path.exists(self.path['backup']):
                             copyfile(os.path.join(self.path['temp'], os.path.splitext(file_info.name)[0] + '.xml'),
                                      os.path.join(self.path['backup'], os.path.splitext(file_info.name)[0] + '.xml'))
                             copyfile(os.path.join(search_path, file_info.name),
-                                     os.path.join(self.path['backup'], file_info.name))     # video file
+                                     os.path.join(self.path['backup'], file_info.name))  # video file
                             copyfile(self.description.xml_file_name,
                                      os.path.join(self.path['backup'],
-                                                  os.path.basename(self.description.xml_file_name)))     # xml file
+                                                  os.path.basename(self.description.xml_file_name)))  # xml file
+
+                        # move file for XML import
+                        move(os.path.join(self.path['temp'], os.path.splitext(file_info.name)[0] + '.xml'),
+                                 os.path.join(self.path['xml'], os.path.splitext(file_info.name)[0] + '.xml'))
+
+                        # copy video
+                        copyfile(os.path.join(search_path, file_info.name),
+                                 os.path.join(self.path['temp'], file_info.name))
+
+                        move(os.path.join(self.path['temp'], file_info.name),
+                                 os.path.join(self.path['video'], file_info.name))
+
+                        os.remove(self.description.xml_file_name)
+                        os.remove(os.path.join(search_path, file_info.name))
 
                         # delete all
                         # we don't need delete file right after send to import
@@ -227,6 +292,15 @@ def get_content_items(item_set):
         if elem.tag == reu_xml_util.get_def_tag('packageItem'):
             desc.keywords = reu_xml_util.get_keywords(elem)
             desc.creationdate = reu_xml_util.get_creationdate(elem)
+            desc.uniqueId = reu_xml_util.get_package_unique_id(elem)
+
+            desc.copyright = elem.find('def:rightsInfo/def:copyrightNotice', reu_xml_util.ns).text
+
+            for cpr in elem.findall('def:rightsInfo/def:usageTerms', reu_xml_util.ns):
+                if cpr.attrib.get('{' + reu_xml_util.ns['xml'] + '}lang') and \
+                                cpr.attrib.get('{' + reu_xml_util.ns['xml'] + '}lang') == 'ru':
+                    desc.copyrightNotice = cpr.text
+                    break
 
         elif elem.tag == reu_xml_util.get_def_tag('newsItem'):
             item_class = reu_xml_util.get_item_class(elem)
@@ -311,7 +385,7 @@ if __name__ == "__main__":
             if os.path.isdir(root_item_path):
                 print(item)
                 for file in os.listdir(root_item_path):
-                    if not os.path.exists(os.path.join(import_backup, file)):            
-                        if is_xml(file):
-                            print(file)
-                            read_xml(os.path.join(root_item_path, file))
+                    # if not os.path.exists(os.path.join(import_backup, file)): # remove check with backup
+                    if is_xml(file):
+                        print(file)
+                        read_xml(os.path.join(root_item_path, file))
