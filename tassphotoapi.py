@@ -8,7 +8,8 @@ url_templates = {
     'by_id_url': 'http://msk-oft-app01:8080/photos/byid/{0}',
     'by_id_ext_url': 'http://msk-oft-app01:8080/photos/extbyid/{0}',
     'by_unique_id': 'http://msk-oft-app01:8080/photos/byfixid/{0}',
-    'by_unique_ext_id': 'http://msk-oft-app01:8080/photos/extbyfixid/{0}'
+    'by_unique_ext_id': 'http://msk-oft-app01:8080/photos/extbyfixid/{0}',
+    'by_filename': 'http://msk-oft-app01:8080/photos/byfilename/{0}'
 }
 
 def get_photo_by_id(photo_id):
@@ -19,16 +20,23 @@ def get_photo_by_id_ext(photo_id):
     pass
 
 
-def get_item_by_original_unique_number(number):
+def get_by_original_unique_number(number):
     if number is not None:
         return get_items_by_url(url_templates['by_unique_id'].format(number))
     else:
         return None
 
 
-def get_item_by_original_unique_number_ext(number):
+def get_by_original_unique_number_ext(number):
     if number is not None:
         return get_items_by_url(url_templates['by_unique_ext_id'].format(number))
+    else:
+        return None
+
+
+def get_by_filename(filename):
+    if filename is not None:
+        return get_items_by_url(url_templates['by_filename'].format(filename))
     else:
         return None
 
@@ -47,7 +55,9 @@ def get_items_by_url(url):
                     if isinstance(items['data'], list):
                         return items['data']
                     elif isinstance(items['data'], dict):
-                        return [].extend(items['data'])
+                        my_array = []
+                        my_array.append(items['data'])
+                        return my_array
                     else:
                         raise ValueError("Wrong object in response: {}".format(str(items['data'])))
                 else:

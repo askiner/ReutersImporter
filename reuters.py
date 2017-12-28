@@ -12,10 +12,11 @@ from xml.etree import cElementTree as et
 from shutil import copyfile, move
 import datetime
 
-from tassphotoapi import get_item_by_original_unique_number as get_in_archive
+from tassphotoapi import get_by_filename as get_from_archive_by_filename, \
+    get_by_original_unique_number as get_from_archive_by_unique
 from direct_db import hide_db_fixedid_item
 
-DEBUG = True
+DEBUG = False
 
 if not DEBUG:
     import_video = r'\\ftp.tass.ru\FTP\Photo\assets\Partners\Video\Reuters'
@@ -25,11 +26,16 @@ if not DEBUG:
     temp_path = r'C:\temp'
     duplicates = r''
 else:
-    import_video = r'/Users/shkirya_a/Documents/test/Reuters_out'
-    import_xml = r'/Users/shkirya_a/Documents/test/Reuters_xml_out'
-    import_backup = r'/Users/shkirya_a/Documents/test/backup'
-    temp_path = r'/Users/shkirya_a/Documents/test'
-    duplicates = r'/Users/shkirya_a/Documents/test/duplicates'
+    import_video = r'C:\temp\Reuters\import'
+    import_xml = r'C:\temp\Reuters\xml'
+    import_backup = r'C:\temp\Reuters\backup'
+    temp_path = r'C:\temp\Reuters\temp'
+# duplicates = r'/Users/shkirya_a/Documents/test/duplicates'
+    # import_video = r'/Users/shkirya_a/Documents/test/Reuters_out'
+    # import_xml = r'/Users/shkirya_a/Documents/test/Reuters_xml_out'
+    # import_backup = r'/Users/shkirya_a/Documents/test/backup'
+    # temp_path = r'/Users/shkirya_a/Documents/test'
+    # duplicates = r'/Users/shkirya_a/Documents/test/duplicates'
 
 class reu_xml_util:
     ns = {'def': 'http://iptc.org/std/nar/2006-10-01/',
@@ -205,17 +211,28 @@ class Publisher:
             # if file already exists ...
             # TODO: remove old file and send this one to ingest
             # get_in_archive
-            data = get_in_archive(self.description.uniqueId)
+            data = get_from_archive_by_unique(self.description.uniqueId)
 
             if data is not None:
                 for item in data:
-                    hide_db_fixedid_item(item['Id'])
+                    pass
+                    # hide_db_fixedid_item(item['Id'])
 
             if os.path.exists(self.description.xml_file_name):
                 search_path = os.path.dirname(self.description.xml_file_name)
 
                 for file_info in self.description.video_files:
                     if os.path.exists(os.path.join(search_path, file_info.name)):
+
+                        # video file exists
+                        # check for dublicate - by filename
+                        data = get_from_archive_by_filename(file_info.name)
+                        if data is not None:  # already exists
+                            copyfile(os.path.join(search_path, file_info.name),
+                                     os.path.join(self.path['backup'], file_info.name + '_dub'))  # video file
+                            os.remove(os.path.join(search_path, file_info.name))
+                            return
+
                         # create XML
                         self.description.save_xml(os.path.join(self.path['temp'], os.path.splitext(file_info.name)[0] + '.xml'))
 

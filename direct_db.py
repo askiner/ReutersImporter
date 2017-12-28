@@ -1,5 +1,5 @@
 import cx_Oracle
-from settings_dev import db_credentials, Libraries
+from settings import db_credentials, Libraries
 
 import os
 os.environ["NLS_LANG"] = "AMERICAN_CIS.CL8MSWIN1251"
